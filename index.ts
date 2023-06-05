@@ -10,34 +10,33 @@ For each request by the user, you will return a JSON object containing an action
 
 Here is the schema for what your responses should be. Only respond with responses in this schema, with what the user requests,  if you don't know how to fill all the params, respond with the "chat" action. Here is the list of actions you are able to respond with:
 
-{actions}
+{actions}   
 
 make sure the user has explicitly said all the params in the action before executing, remember, if you need more information from the user, just respond with the chat action if exists so they will be prompted to add more information for you. You must always respond with an action. 
 
 Dont ask the user for specific params, just respond in a communicative way asking for the information you need, for example, if the user says "transfer money to my friend", you should respond with the "chat" action for "who would you like to transfer money to?" instead of "who is the recipient param for the transfer?".
 
-IMPORTANT: NEVER RESPOND WITHOUT AN ACTION, ALWAYS RESPOND WITH AN ACTION, IF YOU WANT TO COMMUNICTATE, RESPOND WITH CHAT ACTION
+IMPORTANT: ALWAYS RESPOND WITH AN ACTION, IF YOU WANT TO COMMUNICTATE OR NEED MORE INFORMATION FROM THE USER, RESPOND WITH THE CHAT ACTION
 
 Do you understand?
 `;
 
-const ASSISANT_REPONSE = `
-I understand.
-
-The user's request is that as a chatbot, I should always respond with an action expressed as a JSON object. Each action is defined according to a certain schema. Before executing any action, I need to confirm that all the necessary params are provided by the user if the param is marked as requiredByUser.
-
-If the user has not provided all the necessary information to fill out the params, I should return a "chat" action to prompt the user for the additional details needed. This should be done in a conversational manner without specifically asking for a particular parameter.
-
-The user will also provide a conversation history for context. This history provides valuable information that can help generate appropriate responses, i should use the previous history as context for the next message action.
-
-The essential part here is that I must never respond without returning an action, and only respond with the JSON action, no fluff, no introductions or explanations, just the JSON action.
-`;
+const ASSISANT_REPONSE = `Yes, I understand. I will respond with the appropriate actions based on the user's requests and prompt for more information if needed by utilizing the 'chat' action.`;
 
 const USER_INPUT_PROMPT = `This is the history for the user, the format should not be used for responses, and does not accurately respect current user stats. but it provides context into the conversation that you should use to respond to the user with the appropriate action.
 
 ## Conversation History (You are the assistant, the user is the users messages to you previously, and the system provides context ))): 
 
 {history}
+
+
+## Other User Statistics (These are active stats)
+
+{stats}
+
+## User Input:
+
+{input}
 `;
 
 export interface ActionSchema {
@@ -50,6 +49,10 @@ export interface ActionSchema {
   exampleUserInput?: string;
 }
 
+export interface UserStats {
+  name: string;
+  value: string;
+}
 export interface Param {
   name: string;
   type: string;
@@ -72,23 +75,23 @@ export default class ActionableChatbot {
   private engine: string;
   private description: string = "";
   private system =
-    "You are a helpful chatbot that returns JSON for actions supplied by the user.";
+    "You are a helpful chatbot that returns JSON for actions supplied by the user, and utilizes the chat action if you need more information from the user.";
 
   private eventListeners: Record<string, Function[]> = {};
 
-  constructor(
-    apiKey: string,
-    org?: string,
-    engine: string = "gpt-3.5-turbo",
-    dontAddChatAction?: boolean
-  ) {
+  constructor(params: {
+    apiKey: string;
+    org?: string;
+    engine?: string;
+    dontAddChatAction?: boolean;
+  }) {
     this.actions = [];
     this.history = [];
     this.openai = new OpenAIApi(
-      new Configuration({ apiKey: apiKey, organization: org })
+      new Configuration({ apiKey: params.apiKey, organization: params.org })
     );
-    this.engine = engine;
-    if (!dontAddChatAction) {
+    this.engine = params.engine || "gpt-3.5-turbo";
+    if (!params.dontAddChatAction) {
       this.addChatAction();
     }
   }
@@ -122,22 +125,23 @@ export default class ActionableChatbot {
     this.addAction({
       name: "chat",
       description:
-        "The chat action will prompt the user for more information, and should be executed when the user does not supply enough information for an action to be executed, or to communicate with the user.",
+        "The chat action will ask the user for more information, and should ALWAYS be executed when the user does not supply enough information for an action to be executed, or to communicate with the user.",
       params: [
         {
           type: "string",
           name: "message",
           description:
-            "This is the message to prompt the user with, it should be a string.",
+            "This is the message to say to the user, requesting more information to use another action or to communicate with them.",
         },
       ],
       function: async (params: Record<string, string>) => {
         this.addAssistantMessage(params.message);
       },
-      exampleUserInput: "Hey how are you?",
+      exampleUserInput:
+        "A user input that does not supply enough information that wants to perform action X",
       exampleParams: {
         message:
-          "I'm an AI assistant, I don't have feelings, but I'm here to help you. What can I do for you today?",
+          "Sorry, I need more information to perform action X, can you please provide more information on (the params that would be in action X)?",
       },
     });
   }
@@ -147,16 +151,20 @@ export default class ActionableChatbot {
     this.actions.forEach((action) => {
       str += "# '" + action.name + "' Action\n\n";
       str += "Description\n" + action.description + "\n\n";
-      str += `example params for ${action.name}\n`;
+      str += `Parameter Schema for ${action.name}\n`;
       str +=
         replaceAll(
           JSON.stringify(action.params, null, 2),
           `"userInputRequired": true`,
-          `"userInputRequired": true // If not supplied by the user input or history context, return the 'chat' action asking for this parameter to be included.`
+          `"userInputRequired": true // If this field is not supplied by the user input or history context, return the 'chat' action asking for this parameter to be included.`
         ) + "\n\n";
-      str += "example user input: " + action.exampleUserInput + "\n\n    ";
-      str += `\nexample response \n\n`;
-      str += this.buildExample(action) + "\n\n";
+      if (action.exampleUserInput) {
+        str += "example user input: " + action.exampleUserInput + "\n\n    ";
+      }
+      if (action.exampleParams) {
+        str += `\nexample response \n\n`;
+        str += this.buildExample(action) + "\n\n";
+      }
     });
 
     return str;
@@ -191,24 +199,27 @@ export default class ActionableChatbot {
     return JSON.stringify(json);
   }
 
-  async input(input: string) {
+  async input(input: string, userStats?: UserStats[]) {
     const prompt = USER_PROMPT.replace("{actions}", this.getActionsAsString())
       .replace("{history}", this.getHistoryAsString() || "No History Yet")
       .replace("{description}", this.description);
 
-    const user_input =
-      USER_INPUT_PROMPT.replace(
-        "{history}",
-        this.getHistoryAsString() || "No History Yet"
-      ) +
-      "\nUser Input:\n" +
-      input;
+    const user_input = USER_INPUT_PROMPT.replace(
+      "{history}",
+      this.getHistoryAsString() || "No History Yet"
+    )
+      .replace("{input}", input)
+      .replace(
+        "{stats}",
+        userStats
+          ? userStats.map((stat) => stat.name + ": " + stat.value).join("\n")
+          : "No Stats To Show"
+      );
 
     this.history.push({
       type: "user",
       message: input,
     } as History);
-
     const messages = [
       {
         role: "system",
@@ -225,6 +236,7 @@ export default class ActionableChatbot {
     ];
 
     if (this.engine == "gpt-3.5-turbo") {
+      // im not gaslighting the ai
       messages.push({
         role: "user",
         content:
@@ -237,7 +249,7 @@ export default class ActionableChatbot {
       });
       messages.push({
         role: "assistant",
-        content: `{"action": "chat", "params": {"message": "Sorry, I dont know what to do with this message, can you supply more information?"}}`,
+        content: `{"action": "chat", "params": {"message": "Im doing well, what can I help you with today?"}}`,
       });
     }
 
@@ -248,7 +260,7 @@ export default class ActionableChatbot {
     const response = await this.openai.createChatCompletion({
       model: this.engine,
       messages: messages as ChatCompletionRequestMessage[],
-      max_tokens: 50,
+      max_tokens: 100,
       temperature: 0,
       top_p: 1,
     });
@@ -265,6 +277,7 @@ export default class ActionableChatbot {
 
     const extracted = extractJson(returned_message);
     if (!extracted) {
+      console.log("Returned Message", returned_message);
       throw new Error("No JSON returned from OpenAI API");
     }
     const json = JSON.parse(extracted);
@@ -289,7 +302,9 @@ export default class ActionableChatbot {
     }
     return json;
   }
-
+  clearData() {
+    this.history = [];
+  }
   async addSystemMessage(message: string) {
     this.history.push({
       type: "system",

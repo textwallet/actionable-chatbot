@@ -1,22 +1,20 @@
-import ActionableChatbot from ".";
+import ActionableChatbot from "..";
 
 async function test() {
-  const chat = new ActionableChatbot(
-    "",
-    "",
-   // "gpt-4"
-  );
+  const chat = new ActionableChatbot({
+    apiKey: "",
+    org: "",
+    engine: "gpt-4"
+  });
 
   chat.addAction({
-    name: "karate chop",
+    name: "karatechop",
     description: "This action will karate chop the user supplied.",
     params: [
       {
         type: "string",
         name: "personToChop",
-        description:
-          "This is the person to karate chop. if not supplied, return the 'chat' questioning the user. ",
-          userInputRequired: true,
+        description: "This is the person to karate chop",
       },
     ],
     function: async (params: Record<string, string>) => {
