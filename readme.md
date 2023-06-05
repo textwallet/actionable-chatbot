@@ -9,7 +9,8 @@ In this framework, user input is used to determine which action should be execut
 Each action is defined by an action schema, which includes the action's name, parameters, required parameters, description, and an optional function to be executed.
 
 
-##Examples
+## Examples
+
 Examples can be found in the examples folder in this repo. You can also find a good example of a "full" app built with this at 
 https://github.com/solanau/wallet-ai-workshop
 
