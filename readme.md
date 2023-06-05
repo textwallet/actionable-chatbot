@@ -1,6 +1,6 @@
 # ActionableChatbot
 
-p.s. I ai generated this, ill create a more in depth readme later. You should check out https://textwallet.io, where a similar framework is being actively used.
+p.s. I ai generated this, ill create a more in depth readme later. You should check out https://textwallet.io, where a similar framework is being actively used. Will make this into an NPM package when I merge with more stable version.
 
 ActionableChatbot is a Node.js framework designed to create an interactive chatbot with programmable actions. The core functionality is centered around the idea of actions. An action is a specific task the chatbot can perform based on user input, such as returning information or performing a specific function.
 
