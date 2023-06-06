@@ -320,7 +320,7 @@ export default class ActionableChatbot {
       type: "assistant",
       message: message,
     } as History);
-    this.eventListeners["assisant"]?.forEach((callback) => {
+    this.eventListeners["assistant"]?.forEach((callback) => {
       callback(message);
     });
   }
